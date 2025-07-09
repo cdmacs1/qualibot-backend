@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
@@ -8,36 +8,44 @@ import sqlite3
 
 app = FastAPI()
 
-# CORS 허용 설정
+# CORS 설정 추가
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# JWT 설정
 SECRET_KEY = "qualibot_secret_key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-# 비밀번호 암호화 설정
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# 사용자 데이터 모델
 class User(BaseModel):
     username: str
     password: str
+    full_name: str
+    birth_date: str
+    company: str
+    position: str
+    email: EmailStr
+    phone_number: str
 
-# SQLite DB 초기 설정 (사용자 저장소)
 def init_db():
     conn = sqlite3.connect('qualibot.db')
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
-            hashed_password TEXT
+            hashed_password TEXT,
+            full_name TEXT,
+            birth_date TEXT,
+            company TEXT,
+            position TEXT,
+            email TEXT,
+            phone_number TEXT
         )
     """)
     conn.commit()
@@ -45,11 +53,9 @@ def init_db():
 
 init_db()
 
-# 비밀번호 암호화 함수
 def get_password_hash(password):
     return pwd_context.hash(password)
 
-# 사용자 확인 함수
 def authenticate_user(username, password):
     conn = sqlite3.connect('qualibot.db')
     cur = conn.cursor()
@@ -61,7 +67,6 @@ def authenticate_user(username, password):
         return False
     return pwd_context.verify(password, user[0])
 
-# JWT 토큰 생성 함수
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -69,14 +74,16 @@ def create_access_token(data: dict):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# 회원가입 API
 @app.post("/register")
 def register(user: User):
     hashed_password = get_password_hash(user.password)
     conn = sqlite3.connect('qualibot.db')
     cur = conn.cursor()
     try:
-        cur.execute("INSERT INTO users (username, hashed_password) VALUES (?, ?)", (user.username, hashed_password))
+        cur.execute("""
+            INSERT INTO users (username, hashed_password, full_name, birth_date, company, position, email, phone_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user.username, hashed_password, user.full_name, user.birth_date, user.company, user.position, user.email, user.phone_number))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -84,7 +91,6 @@ def register(user: User):
     conn.close()
     return {"msg": "회원가입 성공!"}
 
-# 로그인 API
 @app.post("/login")
 def login(user: User):
     if not authenticate_user(user.username, user.password):
