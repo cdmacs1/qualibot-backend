@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
@@ -24,7 +24,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# User 모델 (validator 포함)
 class User(BaseModel):
     email: EmailStr
     password: str
@@ -34,11 +33,11 @@ class User(BaseModel):
     position: Optional[str] = None
     phone_number: Optional[str] = None
 
-    @validator('age', 'company', 'position', 'phone_number')
-    def not_empty(cls, v, field):
-        # 필수: 값이 None이거나 공백("")이면 오류
+    @field_validator('age', 'company', 'position', 'phone_number')
+    @classmethod
+    def not_empty(cls, v):
         if v is None or (isinstance(v, str) and not v.strip()):
-            raise ValueError(f"{field.name} 필드는 빈 값이 허용되지 않습니다.")
+            raise ValueError("빈 값은 허용되지 않습니다.")
         return v
 
 def init_db():
