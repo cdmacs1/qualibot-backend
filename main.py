@@ -2,13 +2,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from passlib.context import CryptContext
-from jose import jwt, JWTError
+from jose import jwt
 from datetime import datetime, timedelta
 import sqlite3
 
 app = FastAPI()
 
-# CORS 설정 추가
+# CORS 설정 명확히 추가
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,13 +24,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class User(BaseModel):
-    username: str
+    email: EmailStr
     password: str
     full_name: str
-    birth_date: str
+    age: int
     company: str
     position: str
-    email: EmailStr
     phone_number: str
 
 def init_db():
@@ -38,13 +37,12 @@ def init_db():
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
+            email TEXT PRIMARY KEY,
             hashed_password TEXT,
             full_name TEXT,
-            birth_date TEXT,
+            age INTEGER,
             company TEXT,
             position TEXT,
-            email TEXT,
             phone_number TEXT
         )
     """)
@@ -56,22 +54,20 @@ init_db()
 def get_password_hash(password):
     return pwd_context.hash(password)
 
-def authenticate_user(username, password):
+def authenticate_user(email, password):
     conn = sqlite3.connect('qualibot.db')
     cur = conn.cursor()
-    cur.execute("SELECT hashed_password FROM users WHERE username=?", (username,))
+    cur.execute("SELECT hashed_password FROM users WHERE email=?", (email,))
     user = cur.fetchone()
     conn.close()
-
     if not user:
         return False
     return pwd_context.verify(password, user[0])
 
 def create_access_token(data: dict):
-    to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    data.update({"exp": expire})
+    encoded_jwt = jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 @app.post("/register")
@@ -81,9 +77,9 @@ def register(user: User):
     cur = conn.cursor()
     try:
         cur.execute("""
-            INSERT INTO users (username, hashed_password, full_name, birth_date, company, position, email, phone_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user.username, hashed_password, user.full_name, user.birth_date, user.company, user.position, user.email, user.phone_number))
+            INSERT INTO users (email, hashed_password, full_name, age, company, position, phone_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (user.email, hashed_password, user.full_name, user.age, user.company, user.position, user.phone_number))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -93,20 +89,7 @@ def register(user: User):
 
 @app.post("/login")
 def login(user: User):
-    if not authenticate_user(user.username, user.password):
-        raise HTTPException(status_code=401, detail="로그인 실패. 정보를 확인해 주세요.")
-
-    access_token = create_access_token(data={"sub": user.username})
+    if not authenticate_user(user.email, user.password):
+        raise HTTPException(status_code=401, detail="로그인 실패.")
+    access_token = create_access_token({"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
-
-@app.get("/")
-def read_root():
-    return {"message": "Hello from Qualibot!"}
-
-@app.get("/ipc_standards/{section}/explain")
-async def explain_ipc_section(section: str, class_level: str):
-    return {
-        "section": section,
-        "title": f"IPC 섹션 {section}",
-        "ai_explanation": f"선택된 섹션: {section}, 등급: {class_level}에 대한 설명입니다."
-    }
