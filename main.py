@@ -1,14 +1,15 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
+from typing import Optional
 import sqlite3
 
 app = FastAPI()
 
-# CORS 설정 명확히 추가
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,14 +24,22 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# User 모델 (validator 포함)
 class User(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    age: int
-    company: str
-    position: str
-    phone_number: str
+    age: Optional[int] = None
+    company: Optional[str] = None
+    position: Optional[str] = None
+    phone_number: Optional[str] = None
+
+    @validator('age', 'company', 'position', 'phone_number')
+    def not_empty(cls, v, field):
+        # 필수: 값이 None이거나 공백("")이면 오류
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValueError(f"{field.name} 필드는 빈 값이 허용되지 않습니다.")
+        return v
 
 def init_db():
     conn = sqlite3.connect('qualibot.db')
@@ -79,7 +88,10 @@ def register(user: User):
         cur.execute("""
             INSERT INTO users (email, hashed_password, full_name, age, company, position, phone_number)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (user.email, hashed_password, user.full_name, user.age, user.company, user.position, user.phone_number))
+        """, (
+            user.email, hashed_password, user.full_name,
+            user.age, user.company, user.position, user.phone_number
+        ))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
