@@ -24,6 +24,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# 회원가입용 User 모델
 class User(BaseModel):
     email: EmailStr
     password: str
@@ -39,6 +40,11 @@ class User(BaseModel):
         if v is None or (isinstance(v, str) and not v.strip()):
             raise ValueError("빈 값은 허용되지 않습니다.")
         return v
+
+# 로그인용 LoginRequest 모델
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
 
 def init_db():
     conn = sqlite3.connect('qualibot.db')
@@ -99,7 +105,7 @@ def register(user: User):
     return {"msg": "회원가입 성공!"}
 
 @app.post("/login")
-def login(user: User):
+def login(user: LoginRequest):  # User가 아니라 LoginRequest!
     if not authenticate_user(user.email, user.password):
         raise HTTPException(status_code=401, detail="로그인 실패.")
     access_token = create_access_token({"sub": user.email})
